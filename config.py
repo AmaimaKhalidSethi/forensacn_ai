@@ -15,8 +15,10 @@ CHUNK_SIZE = 65536  # 64KB
 # inorder to scan outside of the app directory, we need to specify allowed roots-   
 # this is a security measure to prevent scanning arbitrary paths on the server.
 ALLOWED_SCAN_ROOTS = [
-    os.path.join(BASE_DIR, "evidence"),
-    "/tmp/forensic_evidence",
+    
+    # i created a oevidence folder within the
+    # same directory and allowed it for scanning, change it acc for yourself
+    r"C:\Users\HP\Desktop\forenscan\evidence",
 ]
 
 BLOCKED_UPLOAD_EXTENSIONS = {'.php', '.py', '.rb', '.sh', '.pl', '.cgi', '.asp', '.aspx', '.exe', '.bat', '.cmd', '.ps1'}
