@@ -1,3 +1,5 @@
+# ForenScan_ai
+
 **Digital Forensics File Analysis System**
 
 ForenScan is a self-hosted web application for forensic-grade file analysis. It detects file types via magic-number matching, computes cryptographic hashes, visualises raw hex data, flags anomalies, and now includes an AI assistant (powered by Groq / LLaMA 3.3) that explains findings in plain English and answers analyst questions via a built-in chatbot.
