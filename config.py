@@ -12,6 +12,8 @@ MAX_DIR_FILES = 500
 
 CHUNK_SIZE = 65536  # 64KB
 
+# inorder to scan outside of the app directory, we need to specify allowed roots-   
+# this is a security measure to prevent scanning arbitrary paths on the server.
 ALLOWED_SCAN_ROOTS = [
     os.path.join(BASE_DIR, "evidence"),
     "/tmp/forensic_evidence",
