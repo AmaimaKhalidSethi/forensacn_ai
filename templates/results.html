@@ -1,0 +1,448 @@
+{% extends "base.html" %}
+{% block title %}ForenScan — Results{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Scan Results</h1>
+    <div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-muted);margin-top:0.25rem;letter-spacing:1px">
+      {{ scan_id }}
+    </div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('export', scan_id=scan_id, fmt='json') }}" class="btn-forensic btn-sm-forensic">
+      <i class="bi bi-filetype-json me-1"></i>Export JSON
+    </a>
+    <a href="{{ url_for('export', scan_id=scan_id, fmt='csv') }}" class="btn-forensic btn-sm-forensic">
+      <i class="bi bi-filetype-csv me-1"></i>Export CSV
+    </a>
+    <a href="{{ url_for('index') }}" class="btn-forensic btn-sm-forensic" style="border-color:var(--border-accent);color:var(--text-secondary)">
+      <i class="bi bi-plus me-1"></i>New Scan
+    </a>
+  </div>
+</div>
+
+{# ── Stats Bar ──────────────────────────────────────────────────────── #}
+<div class="stats-bar row g-3 mb-4">
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-box">
+      <span class="stat-number">{{ stats.total }}</span>
+      <span class="stat-label">Files</span>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-box {% if stats.critical %}stat-box-alert{% endif %}">
+      <span class="stat-number" style="color:var(--risk-critical)">{{ stats.critical }}</span>
+      <span class="stat-label">Critical</span>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-box">
+      <span class="stat-number" style="color:var(--risk-high)">{{ stats.high }}</span>
+      <span class="stat-label">High</span>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-box">
+      <span class="stat-number" style="color:var(--risk-medium)">{{ stats.medium }}</span>
+      <span class="stat-label">Medium</span>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-box">
+      <span class="stat-number" style="color:var(--risk-low)">{{ stats.low }}</span>
+      <span class="stat-label">Low</span>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-box {% if stats.anomalies %}stat-box-alert{% endif %}">
+      <span class="stat-number" style="color:var(--risk-high)">{{ stats.anomalies }}</span>
+      <span class="stat-label">Anomalies</span>
+    </div>
+  </div>
+</div>
+
+{# ── Anomaly Banner ─────────────────────────────────────────────────── #}
+{% if stats.anomalies > 0 %}
+<div class="anomaly-alert mb-4">
+  <i class="bi bi-exclamation-triangle-fill me-2" style="color:var(--risk-critical)"></i>
+  <strong style="color:var(--risk-critical);font-family:var(--font-mono);font-size:0.8rem">
+    {{ stats.anomalies }} anomal{{ 'y' if stats.anomalies == 1 else 'ies' }} detected
+  </strong>
+  <span style="color:var(--text-secondary);font-size:0.8rem;margin-left:0.5rem">
+    — Files exhibiting suspicious characteristics are highlighted below.
+  </span>
+</div>
+{% endif %}
+
+{# ── AI Explanation Panel ───────────────────────────────────────────── #}
+<div class="card-forensic p-4 mb-4" id="aiExplainPanel">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <div class="d-flex align-items-center gap-2">
+      <span class="section-label">AI ANALYSIS</span>
+      <span style="font-family:var(--font-mono);font-size:0.65rem;color:var(--accent);border:1px solid var(--accent);padding:1px 6px;border-radius:2px;letter-spacing:1px">BETA</span>
+    </div>
+    <button id="aiExplainBtn" class="btn-forensic btn-sm-forensic" onclick="loadAIExplanation()">
+      <i class="bi bi-stars me-1"></i>Explain with AI
+    </button>
+  </div>
+  <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.5rem">Plain-English summary of findings, risk indicators, and recommended next steps.</div>
+  <div id="aiExplainContent" style="display:none">
+    <div id="aiExplainLoading" style="display:none;padding:1.2rem 0;text-align:center">
+      <span class="spinner-border spinner-border-sm me-2" style="color:var(--accent)" role="status"></span>
+      <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-secondary)">Analysing scan data...</span>
+    </div>
+    <div id="aiExplainResult"></div>
+    <div id="aiExplainError" style="display:none" class="anomaly-alert mt-2">
+      <i class="bi bi-exclamation-triangle me-2" style="color:var(--risk-high)"></i>
+      <span id="aiExplainErrorMsg" style="font-family:var(--font-mono);font-size:0.75rem;color:var(--risk-high)"></span>
+    </div>
+  </div>
+</div>
+
+{# ── Result Blocks ──────────────────────────────────────────────────── #}
+{% for r in results %}
+{% set card_id = "result-" ~ loop.index %}
+<div class="result-card mb-3 {% if r.anomaly_flag %}result-card-anomaly{% endif %}">
+  {# Collapsible header — Bug 13 fixed: role=button, tabindex, cursor #}
+  <div class="result-header"
+       role="button"
+       tabindex="0"
+       data-bs-toggle="collapse"
+       data-bs-target="#{{ card_id }}"
+       aria-expanded="false"
+       aria-controls="{{ card_id }}"
+       onkeydown="if(event.key==='Enter'||event.key===' '){this.click();event.preventDefault();}">
+
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <span class="risk-badge badge-{{ r.risk_level | lower }}">{{ r.risk_level }}</span>
+      {% if r.anomaly_flag %}
+        <span class="risk-badge" style="color:var(--risk-critical);border-color:var(--risk-critical);background:rgba(255,71,87,0.08)">
+          ANOMALY
+        </span>
+      {% endif %}
+      <span style="font-family:var(--font-mono);font-size:0.82rem;color:var(--text-primary)">
+        {{ r.filename }}
+      </span>
+      <span style="font-size:0.72rem;color:var(--text-muted);margin-left:auto">
+        {{ r.detected_type or 'UNKNOWN' }}
+      </span>
+      {% if r.file_size is not none %}
+        <span style="font-size:0.7rem;color:var(--text-muted)">
+          {{ (r.file_size / 1024) | round(1) }} KB
+        </span>
+      {% endif %}
+      <i class="bi bi-chevron-down collapse-icon"></i>
+    </div>
+
+    {% if r.filepath and r.filepath != r.filename %}
+      <div style="font-size:0.68rem;color:var(--text-muted);font-family:var(--font-mono);margin-top:0.3rem;padding-left:0.1rem">
+        {{ r.filepath }}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="collapse" id="{{ card_id }}">
+    <div class="result-body">
+      {% if r.error %}
+        <div class="anomaly-alert mb-3">
+          <i class="bi bi-x-octagon me-2" style="color:var(--risk-high)"></i>
+          <span style="color:var(--risk-high);font-family:var(--font-mono);font-size:0.78rem">
+            Analysis error: {{ r.error }}
+          </span>
+        </div>
+      {% endif %}
+
+      {% if r.anomaly_flag and r.anomaly_reason %}
+        <div class="anomaly-alert mb-3">
+          <div style="font-family:var(--font-mono);font-size:0.72rem;color:var(--risk-critical);letter-spacing:1px;text-transform:uppercase;margin-bottom:0.3rem">
+            Anomaly Detail
+          </div>
+          <span style="font-size:0.8rem;color:var(--text-primary)">{{ r.anomaly_reason }}</span>
+        </div>
+      {% endif %}
+
+      {# Metadata grid #}
+      <div class="meta-grid mb-4">
+        {% set meta_rows = [
+          ("Detected Type",  r.detected_type or "Unknown"),
+          ("MIME Type",      r.mime_type or "—"),
+          ("Declared Ext",   ("." ~ r.declared_ext) if r.declared_ext else "none"),
+          ("File Size",      ((r.file_size | filesizeformat) if r.file_size is not none else "—")),
+          ("Scan Time",      r.scan_timestamp or "—"),
+        ] %}
+        {% for label, value in meta_rows %}
+          <div class="meta-row">
+            <span class="section-label">{{ label }}</span>
+            <span style="font-family:var(--font-mono);font-size:0.78rem;color:var(--text-primary)">{{ value }}</span>
+          </div>
+        {% endfor %}
+
+        {# Footer valid — Bug 12 fixed: explicit three-way check #}
+        <div class="meta-row">
+          <span class="section-label">Footer Valid</span>
+          <span style="font-family:var(--font-mono);font-size:0.78rem">
+            {% if r.footer_valid is none %}
+              <span style="color:var(--text-muted)">N/A</span>
+            {% elif r.footer_valid %}
+              <span style="color:var(--risk-low)">Yes</span>
+            {% else %}
+              <span style="color:var(--risk-high)">No</span>
+            {% endif %}
+          </span>
+        </div>
+      </div>
+
+      {# Hash boxes #}
+      <div class="section-label mb-2">Cryptographic Hashes</div>
+      <div class="mb-1" style="font-size:0.68rem;color:var(--text-muted)">MD5</div>
+      <div class="hash-box mb-2">{{ r.md5_hash or '—' }}</div>
+      <div class="mb-1" style="font-size:0.68rem;color:var(--text-muted)">SHA-256</div>
+      <div class="hash-box mb-4">{{ r.sha256_hash or '—' }}</div>
+
+      {# Hex viewer #}
+      {% if r.hex_preview %}
+        <div class="section-label mb-2">Hex Preview — First 64 Bytes</div>
+        <div class="hex-viewer">
+          {% for row in r.hex_preview %}
+            <div class="hex-row">
+              <span class="hex-addr">{{ row.address }}</span>
+              <span class="hex-bytes">{{ row.hex }}</span>
+              <span class="hex-ascii">{{ row.ascii }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{# ── Forensic Chatbot Widget ──────────────────────────────────────── #}
+<div id="chatWidget" class="chat-widget">
+  <div id="chatToggle" class="chat-toggle" onclick="toggleChat()" title="Ask ForenScan AI">
+    <i class="bi bi-chat-dots-fill" id="chatToggleIcon"></i>
+    <span class="chat-toggle-label">Ask AI</span>
+  </div>
+
+  <div id="chatPanel" class="chat-panel" style="display:none">
+    <div class="chat-header">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-cpu-fill" style="color:var(--accent)"></i>
+        <span style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-primary);letter-spacing:1px">ForenScan AI</span>
+        <span style="font-family:var(--font-mono);font-size:0.6rem;color:var(--risk-low);border:1px solid var(--risk-low);padding:1px 5px;border-radius:2px">ONLINE</span>
+      </div>
+      <button class="chat-close" onclick="toggleChat()" title="Close">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+
+    <div id="chatMessages" class="chat-messages">
+      <div class="chat-msg chat-msg-bot">
+        <div class="chat-bubble">
+          Hi! I'm ForenScan AI. Ask me anything about this scan — file types, anomalies, risk levels, what you should do next, or any forensics concept.
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-footer">
+      <div class="chat-input-row">
+        <input
+          type="text"
+          id="chatInput"
+          class="chat-input"
+          placeholder="Ask about this scan..."
+          autocomplete="off"
+          spellcheck="false"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"
+          maxlength="2000"
+        >
+        <button id="chatSendBtn" class="chat-send-btn" onclick="sendChat()">
+          <i class="bi bi-send-fill"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const SCAN_ID = "{{ scan_id }}";
+  let chatHistory = [];
+  let chatOpen = false;
+
+  /* ─── Chat toggle ─────────────────────────────────────────────── */
+  function toggleChat() {
+    chatOpen = !chatOpen;
+    document.getElementById('chatPanel').style.display = chatOpen ? 'flex' : 'none';
+    document.getElementById('chatToggle').classList.toggle('chat-toggle-active', chatOpen);
+    if (chatOpen) {
+      setTimeout(() => document.getElementById('chatInput').focus(), 80);
+    }
+  }
+
+  /* ─── Send message ───────────────────────────────────────────── */
+  async function sendChat() {
+    const input = document.getElementById('chatInput');
+    const msg = input.value.trim();
+    if (!msg) return;
+
+    input.value = '';
+    appendChatMsg('user', msg);
+    chatHistory.push({ role: 'user', content: msg });
+
+    const typingEl = appendTyping();
+    document.getElementById('chatSendBtn').disabled = true;
+
+    try {
+      const res = await fetch(`/api/chat/${SCAN_ID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, history: chatHistory.slice(0, -1) }),
+      });
+      const data = await res.json();
+      typingEl.remove();
+
+      if (data.error) {
+        appendChatMsg('bot', `⚠ ${data.error}`, true);
+      } else {
+        appendChatMsg('bot', data.reply);
+        chatHistory.push({ role: 'assistant', content: data.reply });
+        // Keep last 10 pairs
+        if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
+      }
+    } catch (e) {
+      typingEl.remove();
+      appendChatMsg('bot', '⚠ Network error — please try again.', true);
+    } finally {
+      document.getElementById('chatSendBtn').disabled = false;
+      document.getElementById('chatInput').focus();
+    }
+  }
+
+  function appendChatMsg(role, text, isError = false) {
+    const msgs = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = `chat-msg chat-msg-${role === 'user' ? 'user' : 'bot'}`;
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble';
+    if (isError) bubble.style.borderColor = 'var(--risk-high)';
+    // Simple markdown-lite: bold, code, newlines
+    bubble.innerHTML = formatChatText(text);
+    div.appendChild(bubble);
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+  }
+
+  function appendTyping() {
+    const msgs = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = 'chat-msg chat-msg-bot';
+    div.innerHTML = `<div class="chat-bubble chat-typing">
+      <span></span><span></span><span></span>
+    </div>`;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+  }
+
+  function formatChatText(text) {
+    return text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/`([^`]+)`/g, '<code style="font-family:var(--font-mono);font-size:0.8em;color:var(--accent);background:rgba(0,212,255,0.08);padding:1px 4px;border-radius:2px">$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+  }
+
+  /* ─── AI Explain ─────────────────────────────────────────────── */
+  let explainLoaded = false;
+
+  async function loadAIExplanation() {
+    if (explainLoaded) return;
+
+    document.getElementById('aiExplainBtn').disabled = true;
+    document.getElementById('aiExplainBtn').innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Loading...';
+    document.getElementById('aiExplainContent').style.display = 'block';
+    document.getElementById('aiExplainLoading').style.display = 'block';
+    document.getElementById('aiExplainError').style.display = 'none';
+    document.getElementById('aiExplainResult').innerHTML = '';
+
+    try {
+      const res = await fetch(`/api/explain/${SCAN_ID}`);
+      const data = await res.json();
+
+      document.getElementById('aiExplainLoading').style.display = 'none';
+
+      if (data.error) {
+        document.getElementById('aiExplainErrorMsg').textContent = data.error;
+        document.getElementById('aiExplainError').style.display = 'block';
+        document.getElementById('aiExplainBtn').disabled = false;
+        document.getElementById('aiExplainBtn').innerHTML = '<i class="bi bi-stars me-1"></i>Retry';
+        return;
+      }
+
+      // Render the structured explanation
+      let html = '';
+
+      if (data.overview) {
+        html += `<div class="ai-section mb-3">
+          <div class="section-label mb-1">Overview</div>
+          <p style="font-size:0.83rem;color:var(--text-primary);margin:0;line-height:1.7">${escHtml(data.overview)}</p>
+        </div>`;
+      }
+
+      if (data.risk_summary) {
+        html += `<div class="ai-section mb-3">
+          <div class="section-label mb-1">Risk Verdict</div>
+          <div class="hash-box" style="font-size:0.78rem;color:var(--risk-high)">${escHtml(data.risk_summary)}</div>
+        </div>`;
+      }
+
+      if (data.file_explanations && data.file_explanations.length > 0) {
+        html += `<div class="ai-section mb-3"><div class="section-label mb-2">Per-File Breakdown</div>`;
+        data.file_explanations.forEach(f => {
+          html += `<div style="border:1px solid var(--border);border-radius:4px;padding:0.75rem;margin-bottom:0.6rem;background:var(--bg-input)">
+            <div style="font-family:var(--font-mono);font-size:0.75rem;color:var(--accent);margin-bottom:0.3rem">${escHtml(f.filename || '')}</div>
+            <p style="font-size:0.8rem;color:var(--text-secondary);margin:0 0 0.4rem 0">${escHtml(f.plain_english || '')}</p>`;
+          if (f.key_indicators && f.key_indicators.length > 0) {
+            html += `<div style="font-size:0.7rem;color:var(--text-muted);font-family:var(--font-mono)">
+              ${f.key_indicators.map(k => `<span style="display:inline-block;margin-right:0.5rem;margin-bottom:0.2rem;padding:1px 6px;border:1px solid var(--border-accent);border-radius:2px;color:var(--text-secondary)">${escHtml(k)}</span>`).join('')}
+            </div>`;
+          }
+          html += `</div>`;
+        });
+        html += `</div>`;
+      }
+
+      if (data.recommendations && data.recommendations.length > 0) {
+        html += `<div class="ai-section">
+          <div class="section-label mb-2">Recommendations</div>
+          <ol style="font-size:0.8rem;color:var(--text-secondary);padding-left:1.4rem;margin:0;line-height:1.8">
+            ${data.recommendations.map(r => `<li>${escHtml(r)}</li>`).join('')}
+          </ol>
+        </div>`;
+      }
+
+      document.getElementById('aiExplainResult').innerHTML = html;
+      document.getElementById('aiExplainBtn').style.display = 'none';
+      explainLoaded = true;
+
+    } catch (e) {
+      document.getElementById('aiExplainLoading').style.display = 'none';
+      document.getElementById('aiExplainErrorMsg').textContent = 'Network error — please try again.';
+      document.getElementById('aiExplainError').style.display = 'block';
+      document.getElementById('aiExplainBtn').disabled = false;
+      document.getElementById('aiExplainBtn').innerHTML = '<i class="bi bi-stars me-1"></i>Retry';
+    }
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+</script>
+{% endblock %}

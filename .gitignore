@@ -1,0 +1,13 @@
+forensic_signatures.db-wal
+forensic_signatures.db-shm
+__pycache__
+.env
+
+*.pyc
+
+
+
+# App data
+uploads/
+*.db
+
